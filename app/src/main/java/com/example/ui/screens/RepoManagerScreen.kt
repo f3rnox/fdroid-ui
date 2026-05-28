@@ -27,6 +27,7 @@ import java.util.*
 @Composable
 fun RepoManagerScreen(
     viewModel: StoreViewModel,
+    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val repos by viewModel.repos.collectAsState()
@@ -37,51 +38,62 @@ fun RepoManagerScreen(
     var newRepoName by remember { mutableStateOf("") }
     var newRepoUrl by remember { mutableStateOf("") }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Hero Section
-        Box(
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Source,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Manage Sources",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onMenuClick,
+                        modifier = Modifier.testTag("repo_menu_btn")
+                    ) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Open Navigation Drawer")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { showAddDialog = true },
+                        modifier = Modifier.testTag("add_repo_open_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AddCircle,
+                            contentDescription = "Add Repo",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                )
+            )
+        },
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "REPOSITORIES",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Manage Sources",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 24.sp
-                    )
-                }
-
-                Button(
-                    onClick = { showAddDialog = true },
-                    modifier = Modifier.testTag("add_repo_open_btn"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add Repo")
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Add")
-                }
-            }
-        }
 
         // Active syncing banner
         AnimatedVisibility(
@@ -222,6 +234,7 @@ fun RepoManagerScreen(
             },
             shape = RoundedCornerShape(16.dp)
         )
+    }
     }
 }
 

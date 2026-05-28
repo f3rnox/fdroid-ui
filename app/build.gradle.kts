@@ -11,7 +11,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
     defaultConfig {
-        applicationId = "com.aistudio.fdroidstore.uyvnbq"
+        applicationId = "com.f3rnox.pulsedroid"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

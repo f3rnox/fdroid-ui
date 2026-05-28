@@ -39,6 +39,7 @@ import com.example.ui.theme.BorderBlue
 fun DiscoverScreen(
     viewModel: StoreViewModel,
     onAppClick: (String) -> Unit,
+    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -48,43 +49,49 @@ fun DiscoverScreen(
 
     val categories = listOf("All", "Internet", "Messaging", "Navigation", "Multimedia", "Security", "Development", "Utilities", "System")
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // App Header Banner (Futuristic Gradient Card)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.background
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Explore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
                         )
-                    )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Discover Libre",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onMenuClick,
+                        modifier = Modifier.testTag("discover_menu_btn")
+                    ) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Open Navigation Drawer")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+            )
+        },
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Column(modifier = Modifier.align(Alignment.BottomStart)) {
-                Text(
-                    text = "LIBRE HUB",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Explore Free Software",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 24.sp
-                )
-            }
-        }
 
         // Search Bar in Material 3 Style
         OutlinedTextField(
@@ -262,6 +269,7 @@ fun DiscoverScreen(
                 }
             }
         }
+    }
     }
 }
 

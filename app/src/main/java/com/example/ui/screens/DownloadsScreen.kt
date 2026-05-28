@@ -33,6 +33,7 @@ fun DownloadsScreen(
     viewModel: StoreViewModel,
     onAppClick: (String) -> Unit,
     onNavigateToDiscover: () -> Unit,
+    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val downloads by viewModel.downloads.collectAsState()
@@ -41,37 +42,50 @@ fun DownloadsScreen(
 
     var selectedTab by remember { mutableStateOf(0) } // 0 = Installed, 1 = Downloads
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Hero Banner Header
-        Box(
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FolderSpecial,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Pulse Library",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onMenuClick,
+                        modifier = Modifier.testTag("library_menu_btn")
+                    ) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Open Navigation Drawer")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                )
+            )
+        },
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Column {
-                Text(
-                    text = "LIBRARY",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "My Applications",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 24.sp
-                )
-            }
-        }
-
-        // Horizontal Tabs
+            // Horizontal Tabs
         TabRow(selectedTabIndex = selectedTab) {
             Tab(
                 selected = selectedTab == 0,
@@ -141,7 +155,8 @@ fun DownloadsScreen(
                             InstalledAppRowItem(
                                 app = app,
                                 onClick = { onAppClick(app.packageName) },
-                                onUninstallClick = { viewModel.uninstallApp(app.packageName) }
+                                onUninstallClick = { viewModel.uninstallApp(app.packageName) },
+                                onInstallClick = { viewModel.installApp(app.packageName) }
                             )
                         }
                     }
@@ -185,14 +200,20 @@ fun DownloadsScreen(
             }
         }
     }
+    }
 }
 
 @Composable
 fun InstalledAppRowItem(
     app: AppEntity,
     onClick: () -> Unit,
-    onUninstallClick: () -> Unit
+    onUninstallClick: () -> Unit,
+    onInstallClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val isReallyInstalled = remember(app.packageName) {
+        isAppInstalledOnDevice(context, app.packageName)
+    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,9 +260,10 @@ fun InstalledAppRowItem(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Version v${app.versionName}",
+                    text = if (isReallyInstalled) "Version v${app.versionName} • Installed" else "Version v${app.versionName} • Downloaded",
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = if (isReallyInstalled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    fontWeight = if (isReallyInstalled) FontWeight.Bold else FontWeight.Normal
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
@@ -267,6 +289,19 @@ fun InstalledAppRowItem(
                         text = "Size: ${String.format("%.1f", app.sizeBytes.toFloat() / (1024 * 1024))} MB",
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            if (!isReallyInstalled) {
+                IconButton(
+                    onClick = onInstallClick,
+                    modifier = Modifier.testTag("library_install_btn_${app.packageName}")
+                ) {
+                    Icon(
+                        Icons.Filled.SystemUpdate,
+                        contentDescription = "Install APK",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }

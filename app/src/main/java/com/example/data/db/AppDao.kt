@@ -61,4 +61,13 @@ interface AppDao {
 
     @Query("DELETE FROM downloads WHERE packageName = :packageName")
     suspend fun deleteDownload(packageName: String)
+
+    @Query("DELETE FROM apps")
+    suspend fun clearAllApps()
+
+    @Query("DELETE FROM repositories")
+    suspend fun clearAllRepos()
+
+    @Query("DELETE FROM downloads")
+    suspend fun clearAllDownloads()
 }

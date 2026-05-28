@@ -176,50 +176,103 @@ fun AppDetailsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         if (app.isInstalled) {
+                            val isReallyInstalled = remember(app.packageName) {
+                                isAppInstalledOnDevice(context, app.packageName)
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
-                                        Icons.Filled.CheckCircle,
-                                        contentDescription = "Installed",
+                                        imageVector = if (isReallyInstalled) Icons.Filled.CheckCircle else Icons.Filled.DownloadDone,
+                                        contentDescription = if (isReallyInstalled) "Installed" else "Downloaded",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(24.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Installed on Device",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
+                                    Column {
+                                        Text(
+                                            text = if (isReallyInstalled) "Installed on Device" else "APK Downloaded",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = if (isReallyInstalled) "Available in system application list" else "Ready to initialize installation",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                        )
+                                    }
                                 }
-                                Button(
-                                    onClick = {
-                                        Toast.makeText(context, "${app.name} is a demo/simulated install.", Toast.LENGTH_SHORT).show()
-                                    },
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Open")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                if (isReallyInstalled) {
+                                    Button(
+                                        onClick = {
+                                            val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+                                            if (launchIntent != null) {
+                                                try {
+                                                    context.startActivity(launchIntent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Could not open app: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "${app.name} launch intent not found.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Open")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            viewModel.installApp(app.packageName)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.testTag("install_apk_btn")
+                                    ) {
+                                        Icon(Icons.Filled.SystemUpdate, contentDescription = "Install", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Install")
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            OutlinedButton(
-                                onClick = { viewModel.uninstallApp(app.packageName) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("uninstall_btn"),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                ),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(12.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Uninstall")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Uninstall app")
+                                if (!isReallyInstalled) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            Toast.makeText(context, "Running ${app.name} pre-packaged simulation model.", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Simulate")
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.uninstallApp(app.packageName) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("uninstall_btn"),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Uninstall", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Remove APK")
+                                }
                             }
                         } else if (status == "DOWNLOADING") {
                             Text(
@@ -342,9 +395,13 @@ fun AppDetailsScreen(
                     value = app.website,
                     icon = Icons.Filled.Language,
                     onClick = {
-                        val webpage: Uri = Uri.parse(app.website)
-                        val intent = Intent(Intent.ACTION_VIEW, webpage)
-                        context.startActivity(intent)
+                        try {
+                            val webpage: Uri = Uri.parse(app.website)
+                            val intent = Intent(Intent.ACTION_VIEW, webpage)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No web browser found to open link.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
 
@@ -353,9 +410,13 @@ fun AppDetailsScreen(
                     value = app.sourceCode,
                     icon = Icons.Filled.Code,
                     onClick = {
-                        val webpage: Uri = Uri.parse(app.sourceCode)
-                        val intent = Intent(Intent.ACTION_VIEW, webpage)
-                        context.startActivity(intent)
+                        try {
+                            val webpage: Uri = Uri.parse(app.sourceCode)
+                            val intent = Intent(Intent.ACTION_VIEW, webpage)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No web browser found to open link.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
 
@@ -364,9 +425,13 @@ fun AppDetailsScreen(
                     value = app.issueTracker,
                     icon = Icons.Filled.BugReport,
                     onClick = {
-                        val webpage: Uri = Uri.parse(app.issueTracker)
-                        val intent = Intent(Intent.ACTION_VIEW, webpage)
-                        context.startActivity(intent)
+                        try {
+                            val webpage: Uri = Uri.parse(app.issueTracker)
+                            val intent = Intent(Intent.ACTION_VIEW, webpage)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No web browser found to open link.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
 
@@ -441,5 +506,14 @@ fun MetaLinkRow(
                 )
             }
         }
+    }
+}
+
+fun isAppInstalledOnDevice(context: android.content.Context, packageName: String): Boolean {
+    return try {
+        context.packageManager.getPackageInfo(packageName, 0)
+        true
+    } catch (e: Exception) {
+        false
     }
 }

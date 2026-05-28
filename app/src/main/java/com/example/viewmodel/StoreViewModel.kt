@@ -140,6 +140,10 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun installApp(packageName: String) {
+        repository.installAppApk(packageName)
+    }
+
     fun uninstallApp(packageName: String) {
         viewModelScope.launch {
             repository.uninstallApp(packageName)
@@ -149,4 +153,10 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getAppFlow(packageName: String): Flow<AppEntity?> = repository.getAppFlow(packageName)
+
+    fun seedRepoDirectReset() {
+        viewModelScope.launch {
+            repository.resetDatabase()
+        }
+    }
 }
