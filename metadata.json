@@ -1,0 +1,6 @@
+{
+  "name": "F-Droid Store",
+  "description": "A beautiful, premium material design store frontend for F-Droid repositories supporting app discovery, category browsing, custom repo synchronization, downloads, and app management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
