@@ -22,6 +22,7 @@ class ExampleRobolectricTest {
 
   @Test
   fun `launch MainActivity`() {
+    // Force rerun
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
       scenario.onActivity { activity ->
         assert(activity != null)

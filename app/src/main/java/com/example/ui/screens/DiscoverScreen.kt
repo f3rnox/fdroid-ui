@@ -219,7 +219,7 @@ fun DiscoverScreen(
             val standardNames = listOf("Internet", "Messaging", "Navigation", "Multimedia", "Security", "Development", "Utilities", "System")
             val standardInfos = listOf(
                 CategoryInfo("Internet", "Browsers, messengers & web clients", Icons.Filled.Language, Color(0xFF2196F3)),
-                CategoryInfo("Messaging", "Secure chat, email & instant messaging", Icons.Filled.Chat, Color(0xFF4CAF50)),
+                CategoryInfo("Messaging", "Secure chat, email & instant messaging", Icons.Filled.Message, Color(0xFF4CAF50)),
                 CategoryInfo("Navigation", "Maps, GPS navigation & transit guides", Icons.Filled.Map, Color(0xFFFF9800)),
                 CategoryInfo("Multimedia", "Video players, music & photo editors", Icons.Filled.PlayArrow, Color(0xFFE91E63)),
                 CategoryInfo("Security", "VPNs, passwords & encryption tools", Icons.Filled.Security, Color(0xFF9C27B0)),
@@ -246,10 +246,10 @@ fun DiscoverScreen(
             }
             
             val allInfos = standardInfos + additionalInfos
-            val appsByCategory = allApps.groupBy { it.category.lowercase() }
+            val appsByCategory = allApps.groupBy { it.category.trim().lowercase() }
             
             allInfos.map { category ->
-                val matchingApps = appsByCategory[category.name.lowercase()] ?: emptyList()
+                val matchingApps = appsByCategory[category.name.trim().lowercase()] ?: emptyList()
                 CategoryDisplayData(
                     category = category,
                     appCount = matchingApps.size,
