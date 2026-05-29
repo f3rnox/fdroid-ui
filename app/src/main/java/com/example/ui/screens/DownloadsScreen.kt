@@ -26,6 +26,7 @@ import coil.request.ImageRequest
 import com.example.data.model.AppEntity
 import com.example.data.model.DownloadEntity
 import com.example.viewmodel.StoreViewModel
+import com.example.ui.components.AppIcon
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,9 +212,23 @@ fun InstalledAppRowItem(
     onInstallClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val isReallyInstalled = remember(app.packageName) {
-        isAppInstalledOnDevice(context, app.packageName)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var isReallyInstalled by remember(app.packageName) {
+        mutableStateOf(isAppInstalledOnDevice(context, app.packageName))
     }
+
+    DisposableEffect(lifecycleOwner, app.packageName) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isReallyInstalled = isAppInstalledOnDevice(context, app.packageName)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -231,24 +246,16 @@ fun InstalledAppRowItem(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AppIcon(
+                iconUrl = app.iconUrl,
+                appName = app.name,
+                packageName = app.packageName,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(app.iconUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "${app.name} icon",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                )
-            }
+                    .clip(RoundedCornerShape(12.dp)),
+                fallbackColor = MaterialTheme.colorScheme.primary,
+                fontSize = 16.sp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -342,24 +349,16 @@ fun DownloadRowItem(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                AppIcon(
+                    iconUrl = download.iconUrl,
+                    appName = download.appName,
+                    packageName = download.packageName,
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                        .padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(download.iconUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "app icon",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                    )
-                }
+                        .clip(RoundedCornerShape(10.dp)),
+                    fallbackColor = MaterialTheme.colorScheme.primary,
+                    fontSize = 14.sp
+                )
 
                 Spacer(modifier = Modifier.width(12.dp))
 

@@ -11,6 +11,7 @@ import com.example.data.repository.AppRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 class StoreViewModel(application: Application) : AndroidViewModel(application) {
     private val appDatabase = AppDatabase.getDatabase(application)
@@ -45,7 +46,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         // Automatically seed/populate DB on first run in the background
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             repository.seedDatabaseIfEmpty()
 
             // Automatically sync repositories on first startup sequentially to prevent race conditions

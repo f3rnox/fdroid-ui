@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.AppEntity
+import com.example.ui.components.AppIcon
+import com.example.data.model.DownloadEntity
 import com.example.viewmodel.StoreViewModel
 import com.example.ui.theme.BorderBlue
 
@@ -46,6 +50,7 @@ fun DiscoverScreen(
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val filteredApps by viewModel.filteredApps.collectAsState()
     val allApps by viewModel.allApps.collectAsState()
+    val downloads by viewModel.downloads.collectAsState()
 
     val categories = listOf("All", "Internet", "Messaging", "Navigation", "Multimedia", "Security", "Development", "Utilities", "System")
 
@@ -86,11 +91,13 @@ fun DiscoverScreen(
         },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(scrollState)
         ) {
 
         // Search Bar in Material 3 Style
@@ -183,89 +190,263 @@ fun DiscoverScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(featuredApps) { app ->
-                        FeaturedAppCard(app = app, onClick = { onAppClick(app.packageName) })
+                        val activeDownload = downloads.find { it.packageName == app.packageName && (it.status == "DOWNLOADING" || it.status == "PENDING") }
+                        FeaturedAppCard(
+                            app = app,
+                            download = activeDownload,
+                            onClick = { onAppClick(app.packageName) }
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
 
-        // Search Results / Main List Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), CircleShape)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (searchQuery.isEmpty()) "BROWSE APPS" else "SEARCH RESULTS",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    letterSpacing = 1.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        val limit = remember(selectedCategory, searchQuery) { mutableStateOf(10) }
+        val totalApps = filteredApps.size
+        val displayedApps = filteredApps.take(limit.value)
+
+        // LaunchedEffect to detect scroll to bottom and load more
+        LaunchedEffect(scrollState.value, scrollState.maxValue) {
+            if (scrollState.value > 0 && scrollState.value >= scrollState.maxValue - 400) {
+                if (limit.value < totalApps) {
+                    limit.value += 10
+                }
             }
-            Text(
-                text = "${filteredApps.size} apps",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
 
-        // Complete list of filtered apps
-        if (filteredApps.isEmpty()) {
-            Box(
+        val categoryDisplayDataList = remember(allApps) {
+            val standardNames = listOf("Internet", "Messaging", "Navigation", "Multimedia", "Security", "Development", "Utilities", "System")
+            val standardInfos = listOf(
+                CategoryInfo("Internet", "Browsers, messengers & web clients", Icons.Filled.Language, Color(0xFF2196F3)),
+                CategoryInfo("Messaging", "Secure chat, email & instant messaging", Icons.Filled.Chat, Color(0xFF4CAF50)),
+                CategoryInfo("Navigation", "Maps, GPS navigation & transit guides", Icons.Filled.Map, Color(0xFFFF9800)),
+                CategoryInfo("Multimedia", "Video players, music & photo editors", Icons.Filled.PlayArrow, Color(0xFFE91E63)),
+                CategoryInfo("Security", "VPNs, passwords & encryption tools", Icons.Filled.Security, Color(0xFF9C27B0)),
+                CategoryInfo("Development", "IDEs, terminal emulators & utilities", Icons.Filled.Code, Color(0xFF607D8B)),
+                CategoryInfo("Utilities", "File managers, widgets & tools", Icons.Filled.Build, Color(0xFF795548)),
+                CategoryInfo("System", "Backups, launchers & customization", Icons.Filled.Android, Color(0xFF009688))
+            )
+            
+            // Extract any and all other dynamic categories from the database metadata
+            val additionalCategories = allApps
+                .map { it.category }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .filter { cat -> !standardNames.any { it.equals(cat, ignoreCase = true) } }
+                .sorted()
+            
+            val additionalInfos = additionalCategories.map { cat ->
+                CategoryInfo(
+                    name = cat,
+                    description = "$cat apps available in optimized metadata index",
+                    icon = Icons.Filled.Folder,
+                    color = Color(0xFF607D8B)
+                )
+            }
+            
+            val allInfos = standardInfos + additionalInfos
+            val appsByCategory = allApps.groupBy { it.category.lowercase() }
+            
+            allInfos.map { category ->
+                val matchingApps = appsByCategory[category.name.lowercase()] ?: emptyList()
+                CategoryDisplayData(
+                    category = category,
+                    appCount = matchingApps.size,
+                    previewApps = matchingApps.take(3)
+                )
+            }
+        }
+
+        if (searchQuery.isEmpty() && selectedCategory == "All") {
+            // --- VIEW 1: CATEGORY LIST ---
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Filled.Inbox,
-                        contentDescription = "Empty",
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "No apps match your criteria.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold
+                        text = "BROWSE CATEGORIES",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Try syncing repositories or clearing search filters",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline
+                }
+                Text(
+                    text = "${categoryDisplayDataList.size} categories",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                categoryDisplayDataList.forEach { displayData ->
+                    CategoryCard(
+                        category = displayData.category,
+                        appCount = displayData.appCount,
+                        previewApps = displayData.previewApps,
+                        onAppClick = onAppClick,
+                        onClick = { viewModel.selectCategory(displayData.category.name) }
                     )
                 }
             }
         } else {
-            LazyColumn(
+            // --- VIEW 2 & 3: CATEGORY BROWSER / SEARCH RESULTS ---
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(bottom = 80.dp), // Height below bottom-nav bar
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(filteredApps, key = { it.packageName }) { app ->
-                    AppRowItem(
-                        app = app,
-                        onAppClick = { onAppClick(app.packageName) },
-                        onFavoriteClick = { viewModel.toggleFavorite(app.packageName) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), CircleShape)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (searchQuery.isNotEmpty()) "SEARCH RESULTS" else "${selectedCategory.uppercase()} APPS",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                
+                if (searchQuery.isEmpty() && selectedCategory != "All") {
+                    Text(
+                        text = "Back to categories",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable { viewModel.selectCategory("All") }
+                            .padding(start = 8.dp, end = 4.dp)
+                    )
+                } else {
+                    Text(
+                        text = "$totalApps apps",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (displayedApps.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Filled.Inbox,
+                            contentDescription = "Empty",
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No apps match your criteria.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Try syncing repositories or checking details",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    displayedApps.forEach { app ->
+                        val activeDownload = downloads.find { it.packageName == app.packageName && (it.status == "DOWNLOADING" || it.status == "PENDING") }
+                        key(app.packageName) {
+                            AppRowItem(
+                                app = app,
+                                download = activeDownload,
+                                onAppClick = { onAppClick(app.packageName) },
+                                onFavoriteClick = { viewModel.toggleFavorite(app.packageName) }
+                            )
+                        }
+                    }
+                }
+
+                // If we have more items to load, show a loading spinner and a "Load More" indicator/button
+                if (limit.value < totalApps) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 100.dp, top = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Showing ${displayedApps.size} of $totalApps apps. Scroll or click to see more.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { limit.value += 10 },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Text("Load More")
+                        }
+                    }
+                } else {
+                    // All apps loaded indicator
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 100.dp, top = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "All $totalApps apps loaded",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
         }
@@ -273,9 +454,189 @@ fun DiscoverScreen(
     }
 }
 
+// Category Data Model & Card UI
+data class CategoryInfo(
+    val name: String,
+    val description: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val color: Color
+)
+
+data class CategoryDisplayData(
+    val category: CategoryInfo,
+    val appCount: Int,
+    val previewApps: List<AppEntity>
+)
+
+@Composable
+fun CategoryCard(
+    category: CategoryInfo,
+    appCount: Int,
+    previewApps: List<AppEntity>,
+    onAppClick: (String) -> Unit,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(category.color.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = category.icon,
+                        contentDescription = null,
+                        tint = category.color,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = category.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = category.description,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "$appCount apps",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(4.dp))
+                
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            if (previewApps.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = "FEATURED IN ${category.name.uppercase()}",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = category.color.copy(alpha = 0.8f),
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    previewApps.forEach { app ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+                                .clickable { onAppClick(app.packageName) }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AppIcon(
+                                iconUrl = app.iconUrl,
+                                appName = app.name,
+                                packageName = app.packageName,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                fallbackColor = category.color,
+                                fontSize = 12.sp
+                            )
+                            
+                            Spacer(modifier = Modifier.width(10.dp))
+                            
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = app.name,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = app.summary,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            
+                            Icon(
+                                imageVector = Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun FeaturedAppCard(
     app: AppEntity,
+    download: DownloadEntity? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -295,24 +656,18 @@ fun FeaturedAppCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AppIcon(
+                iconUrl = app.iconUrl,
+                appName = app.name,
+                packageName = app.packageName,
                 modifier = Modifier
                     .size(60.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(Color.White)
                     .padding(5.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(app.iconUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "${app.name} icon",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-            }
+                fallbackColor = MaterialTheme.colorScheme.primary,
+                fontSize = 20.sp
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -354,14 +709,48 @@ fun FeaturedAppCard(
                     letterSpacing = 0.5.sp,
                     modifier = Modifier.padding(vertical = 1.dp)
                 )
-                Text(
-                    text = app.summary,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 14.sp
-                )
+                if (download != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (download.status == "PENDING") "Pending..." else "Downloading...",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${(download.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { download.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f)
+                    )
+                } else {
+                    Text(
+                        text = app.summary,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 14.sp
+                    )
+                }
             }
         }
     }
@@ -370,6 +759,7 @@ fun FeaturedAppCard(
 @Composable
 fun AppRowItem(
     app: AppEntity,
+    download: DownloadEntity? = null,
     onAppClick: () -> Unit,
     onFavoriteClick: () -> Unit
 ) {
@@ -391,24 +781,16 @@ fun AppRowItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AppIcon(
+                iconUrl = app.iconUrl,
+                appName = app.name,
+                packageName = app.packageName,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(app.iconUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "${app.name} Icon",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-            }
+                    .clip(RoundedCornerShape(12.dp)),
+                fallbackColor = MaterialTheme.colorScheme.primary,
+                fontSize = 16.sp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -495,6 +877,42 @@ fun AppRowItem(
                         )
                     }
                 }
+
+                if (download != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (download.status == "PENDING") "Pending..." else "Downloading...",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${(download.progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { download.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        )
+                    }
+                }
             }
 
             IconButton(
@@ -510,3 +928,4 @@ fun AppRowItem(
         }
     }
 }
+

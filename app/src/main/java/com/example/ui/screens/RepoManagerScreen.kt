@@ -105,32 +105,47 @@ fun RepoManagerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.tertiaryContainer
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                tonalElevation = 3.dp
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.5.dp,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Synchronizing Repository",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = syncProgress,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
-                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Synchronizing Repository",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = syncProgress,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    )
                 }
             }
         }
@@ -171,6 +186,7 @@ fun RepoManagerScreen(
                     RepoRowItem(
                         repo = repo,
                         isSyncing = syncingRepoUrl == repo.url,
+                        syncProgress = if (syncingRepoUrl == repo.url) syncProgress else "",
                         onSyncClick = { viewModel.syncRepo(repo.url) },
                         onDeleteClick = { viewModel.deleteRepo(repo.url) }
                     )
@@ -242,6 +258,7 @@ fun RepoManagerScreen(
 fun RepoRowItem(
     repo: RepositoryEntity,
     isSyncing: Boolean,
+    syncProgress: String,
     onSyncClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -329,6 +346,63 @@ fun RepoRowItem(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Beautiful Inline Progress Bar under description
+            AnimatedVisibility(
+                visible = isSyncing,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Syncing Repository...",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (syncProgress.contains("Found")) {
+                                "Running: " + syncProgress.substringAfter("Found").trim()
+                            } else {
+                                "Active"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = syncProgress.ifEmpty { "Updating feed indexes..." },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 

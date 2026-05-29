@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.AppEntity
+import com.example.ui.components.AppIcon
 import com.example.viewmodel.StoreViewModel
 import kotlinx.coroutines.launch
 
@@ -48,6 +49,26 @@ fun AppDetailsScreen(
 
     val progress = downloadProgressMap[packageName] ?: 0f
     val status = downloadStatusMap[packageName] ?: ""
+
+    var isInitiatingDownload by remember(packageName, status) { mutableStateOf(false) }
+    val isCurrentlyDownloading = status == "DOWNLOADING" || status == "PENDING" || isInitiatingDownload
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var isReallyInstalled by remember(packageName) {
+        mutableStateOf(isAppInstalledOnDevice(context, packageName))
+    }
+
+    DisposableEffect(lifecycleOwner, packageName) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isReallyInstalled = isAppInstalledOnDevice(context, packageName)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -103,24 +124,16 @@ fun AppDetailsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    AppIcon(
+                        iconUrl = app.iconUrl,
+                        appName = app.name,
+                        packageName = app.packageName,
                         modifier = Modifier
                             .size(80.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                            .padding(6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(app.iconUrl)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = "${app.name} icon",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                        )
-                    }
+                            .clip(RoundedCornerShape(18.dp)),
+                        fallbackColor = MaterialTheme.colorScheme.primary,
+                        fontSize = 28.sp
+                    )
 
                     Spacer(modifier = Modifier.width(16.dp))
 
@@ -175,10 +188,7 @@ fun AppDetailsScreen(
                         modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (app.isInstalled) {
-                            val isReallyInstalled = remember(app.packageName) {
-                                isAppInstalledOnDevice(context, app.packageName)
-                            }
+                        if (isReallyInstalled) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -189,57 +199,43 @@ fun AppDetailsScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = if (isReallyInstalled) Icons.Filled.CheckCircle else Icons.Filled.DownloadDone,
-                                        contentDescription = if (isReallyInstalled) "Installed" else "Downloaded",
+                                        imageVector = Icons.Filled.CheckCircle,
+                                        contentDescription = "Installed",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(24.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = if (isReallyInstalled) "Installed on Device" else "APK Downloaded",
+                                            text = "Installed on Device",
                                             fontWeight = FontWeight.Bold,
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
                                         Text(
-                                            text = if (isReallyInstalled) "Available in system application list" else "Ready to initialize installation",
+                                            text = "Available in system application list",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                         )
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                if (isReallyInstalled) {
-                                    Button(
-                                        onClick = {
-                                            val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
-                                            if (launchIntent != null) {
-                                                try {
-                                                    context.startActivity(launchIntent)
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(context, "Could not open app: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                }
-                                            } else {
-                                                Toast.makeText(context, "${app.name} launch intent not found.", Toast.LENGTH_SHORT).show()
+                                Button(
+                                    onClick = {
+                                        val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+                                        if (launchIntent != null) {
+                                            try {
+                                                context.startActivity(launchIntent)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Could not open app: ${e.message}", Toast.LENGTH_SHORT).show()
                                             }
-                                        },
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text("Open")
-                                    }
-                                } else {
-                                    Button(
-                                        onClick = {
-                                            viewModel.installApp(app.packageName)
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.testTag("install_apk_btn")
-                                    ) {
-                                        Icon(Icons.Filled.SystemUpdate, contentDescription = "Install", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Install")
-                                    }
+                                        } else {
+                                            Toast.makeText(context, "${app.name} launch intent not found.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Open")
                                 }
                             }
                             Spacer(modifier = Modifier.height(12.dp))
@@ -247,16 +243,102 @@ fun AppDetailsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                if (!isReallyInstalled) {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val uninstallIntent = Intent(Intent.ACTION_DELETE).apply {
+                                                data = Uri.parse("package:${app.packageName}")
+                                            }
+                                            context.startActivity(uninstallIntent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Failed to uninstall: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Uninstall app", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Uninstall")
+                                }
+
+                                if (app.isInstalled) {
                                     OutlinedButton(
-                                        onClick = {
-                                            Toast.makeText(context, "Running ${app.name} pre-packaged simulation model.", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.weight(1f),
+                                        onClick = { viewModel.uninstallApp(app.packageName) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("uninstall_btn"),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("Simulate")
+                                        Text("Remove APK")
                                     }
+                                }
+                            }
+                        } else if (app.isInstalled) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DownloadDone,
+                                        contentDescription = "Downloaded",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "APK Downloaded",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = "Ready to initialize installation",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.installApp(app.packageName)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.testTag("install_apk_btn")
+                                ) {
+                                    Icon(Icons.Filled.SystemUpdate, contentDescription = "Install", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Install")
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        Toast.makeText(context, "Running ${app.name} pre-packaged simulation model.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Simulate")
                                 }
                                 OutlinedButton(
                                     onClick = { viewModel.uninstallApp(app.packageName) },
@@ -274,13 +356,43 @@ fun AppDetailsScreen(
                                     Text("Remove APK")
                                 }
                             }
-                        } else if (status == "DOWNLOADING") {
-                            Text(
-                                text = "Downloading...",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                        } else if (isCurrentlyDownloading) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Version v${app.versionName}",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = "${String.format("%.1f", app.sizeBytes.toFloat() / (1024 * 1024))} MB",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Button(
+                                    onClick = {},
+                                    enabled = false,
+                                    modifier = Modifier.testTag("download_install_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .testTag("downloading_spinner"),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Downloading...")
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
                             LinearProgressIndicator(
                                 progress = { progress },
                                 modifier = Modifier
@@ -327,7 +439,10 @@ fun AppDetailsScreen(
                                     )
                                 }
                                 Button(
-                                    onClick = { viewModel.downloadApp(app.packageName) },
+                                    onClick = {
+                                        isInitiatingDownload = true
+                                        viewModel.downloadApp(app.packageName)
+                                    },
                                     modifier = Modifier.testTag("download_install_btn"),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {

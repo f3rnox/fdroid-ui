@@ -314,7 +314,7 @@ class AppRepository(
         )
     }
 
-    // Sync a repository by fetching and parsing its index-v1.json (or a mock sub-index to avoid OOMs on F-Droid)
+    // Sync a repository by fetching and parsing its index-v1.json in a memory-safe, streaming manner
     suspend fun syncRepository(repoUrl: String, onProgress: (String) -> Unit): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -326,24 +326,6 @@ class AppRepository(
                 
                 Log.d("AppRepository", "Syncing repository from url: $indexUrl")
                 
-                // Let's perform a HEAD/GET request
-                // Because f-droid.org/repo/index-v1.json and guardianproject index-v1.json are massive,
-                // we'll check if we are on these main repos, and use a fast preseed to avoid OOM or slow network loading.
-                if (cleanUrl.contains("f-droid.org", ignoreCase = true) || cleanUrl.contains("guardianproject", ignoreCase = true)) {
-                    val repoName = if (cleanUrl.contains("guardianproject", ignoreCase = true)) "Guardian Project" else "F-Droid Official"
-                    onProgress("Downloading $repoName index-v1.json...")
-                    delay(1000) // Beautiful fast simulate of download
-                    onProgress("Caching $repoName repository apps...")
-                    delay(800)
-                    
-                    val list = generatePreseededApps()
-                    appDao.insertApps(list)
-                    appDao.updateRepoSync(cleanUrl, System.currentTimeMillis(), list.size)
-                    onProgress("Sync complete! Registered ${list.size} packages.")
-                    return@withContext true
-                }
-
-                // If a user enters a custom repo, we'll try to fetch and parse
                 val request = Request.Builder().url(indexUrl).build()
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
@@ -351,61 +333,221 @@ class AppRepository(
                         return@withContext false
                     }
                     
-                    onProgress("Parsing index JSON...")
-                    val jsonString = response.body?.string() ?: ""
-                    if (jsonString.isBlank()) {
-                        onProgress("Database stream empty.")
-                        return@withContext false
-                    }
-
-                    val jsonObject = JSONObject(jsonString)
-                    val repoObj = jsonObject.optJSONObject("repo")
-                    val appsArray = jsonObject.optJSONArray("apps")
+                    onProgress("Streaming and parsing index JSON...")
+                    val body = response.body ?: throw Exception("Response body is null")
                     
-                    val repoName = repoObj?.optString("name", "Synced Repository") ?: "Custom Repo"
-                    val desc = repoObj?.optString("description") ?: "Imported at run-time"
-                    
+                    var repoName = "Synced Repository"
+                    var desc = "Imported at run-time"
                     val parsedApps = mutableListOf<AppEntity>()
-                    if (appsArray != null) {
-                        for (i in 0 until appsArray.length()) {
-                            val appObj = appsArray.getJSONObject(i)
-                            val pkg = appObj.getString("packageName")
-                            val name = appObj.optString("name", pkg)
-                            val summary = appObj.optString("summary", "No summary.")
-                            val descText = appObj.optString("description", "No description.")
-                            val catArray = appObj.optJSONArray("categories")
-                            val cat = if (catArray != null && catArray.length() > 0) catArray.getString(0) else "Utilities"
-                            
-                            val iconFile = appObj.optString("icon", "")
-                            val iconFullPath = if (iconFile.isNotEmpty()) "$cleanUrl/icons-640/$iconFile" else ""
-                            
-                            val verName = appObj.optString("suggestedVersionName", "1.0")
-                            val verCode = appObj.optLong("suggestedVersionCode", 1L)
-                            
-                            parsedApps.add(
-                                AppEntity(
-                                    packageName = pkg,
-                                    repoUrl = cleanUrl,
-                                    name = name,
-                                    summary = summary,
-                                    description = descText,
-                                    category = cat,
-                                    iconUrl = iconFullPath,
-                                    versionName = verName,
-                                    versionCode = verCode,
-                                    apkUrl = "$cleanUrl/${pkg}_$verCode.apk",
-                                    sizeBytes = 12 * 1024 * 1024, // Estimate default/empty
-                                    website = appObj.optString("webSite", ""),
-                                    sourceCode = appObj.optString("sourceCode", ""),
-                                    issueTracker = appObj.optString("issueTracker", ""),
-                                    license = appObj.optString("license", "Unknown"),
-                                    isFavorite = false,
-                                    isInstalled = false
-                                )
-                            )
+                    
+                    // Streaming parse with android.util.JsonReader to avoid huge JSON heap allocation (OOM)
+                    val reader = android.util.JsonReader(body.charStream())
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        val key = reader.nextName()
+                        if (key == "repo") {
+                            reader.beginObject()
+                            while (reader.hasNext()) {
+                                val repoKey = reader.nextName()
+                                when (repoKey) {
+                                    "name" -> repoName = reader.nextString()
+                                    "description" -> desc = reader.nextString()
+                                    else -> reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                        } else if (key == "apps") {
+                            reader.beginArray()
+                            while (reader.hasNext()) {
+                                reader.beginObject()
+                                var pkg = ""
+                                var name = ""
+                                var summary = "No summary."
+                                var descText = "No description."
+                                var cat = "Utilities"
+                                var iconFile = ""
+                                var verName = "1.0"
+                                var verCode = 1L
+                                var webSite = ""
+                                var sourceCode = ""
+                                var issueTracker = ""
+                                var license = "Unknown"
+                                
+                                var localizedName: String? = null
+                                var localizedSummary: String? = null
+                                var localizedDesc: String? = null
+                                var localizedIcon: String? = null
+                                var localizedIconLoc: String? = null
+                                var fallbackName: String? = null
+                                var fallbackSummary: String? = null
+                                var fallbackDesc: String? = null
+                                var fallbackIcon: String? = null
+                                var fallbackIconLoc: String? = null
+                                
+                                while (reader.hasNext()) {
+                                    val appKey = reader.nextName()
+                                    if (reader.peek() == android.util.JsonToken.NULL) {
+                                        reader.skipValue()
+                                        continue
+                                    }
+                                    when (appKey) {
+                                        "packageName" -> pkg = reader.nextString()
+                                        "name" -> name = reader.nextString()
+                                        "summary" -> summary = reader.nextString()
+                                        "description" -> descText = reader.nextString()
+                                        "localized" -> {
+                                            reader.beginObject()
+                                            while (reader.hasNext()) {
+                                                val localeCode = reader.nextName()
+                                                if (reader.peek() == android.util.JsonToken.NULL) {
+                                                    reader.skipValue()
+                                                    continue
+                                                }
+                                                reader.beginObject()
+                                                var locName = ""
+                                                var locSummary = ""
+                                                var locDesc = ""
+                                                var locIcon = ""
+                                                while (reader.hasNext()) {
+                                                    val subKey = reader.nextName()
+                                                    if (reader.peek() == android.util.JsonToken.NULL) {
+                                                        reader.skipValue()
+                                                        continue
+                                                    }
+                                                    when (subKey) {
+                                                        "name" -> locName = reader.nextString()
+                                                        "summary" -> locSummary = reader.nextString()
+                                                        "description" -> locDesc = reader.nextString()
+                                                        "icon" -> locIcon = reader.nextString()
+                                                        else -> reader.skipValue()
+                                                    }
+                                                }
+                                                reader.endObject()
+                                                
+                                                if (localeCode.equals("en-US", ignoreCase = true) || localeCode.equals("en", ignoreCase = true)) {
+                                                    if (locName.isNotEmpty()) localizedName = locName
+                                                    if (locSummary.isNotEmpty()) localizedSummary = locSummary
+                                                    if (locDesc.isNotEmpty()) localizedDesc = locDesc
+                                                    if (locIcon.isNotEmpty()) {
+                                                        localizedIcon = locIcon
+                                                        localizedIconLoc = localeCode
+                                                    }
+                                                } else {
+                                                    if (fallbackName == null && locName.isNotEmpty()) fallbackName = locName
+                                                    if (fallbackSummary == null && locSummary.isNotEmpty()) fallbackSummary = locSummary
+                                                    if (fallbackDesc == null && locDesc.isNotEmpty()) fallbackDesc = locDesc
+                                                    if (fallbackIcon == null && locIcon.isNotEmpty()) {
+                                                        fallbackIcon = locIcon
+                                                        fallbackIconLoc = localeCode
+                                                    }
+                                                }
+                                            }
+                                            reader.endObject()
+                                        }
+                                        "categories" -> {
+                                            reader.beginArray()
+                                            if (reader.hasNext()) {
+                                                cat = reader.nextString()
+                                            }
+                                            while (reader.hasNext()) {
+                                                reader.skipValue()
+                                            }
+                                            reader.endArray()
+                                        }
+                                        "icon" -> iconFile = reader.nextString()
+                                        "suggestedVersionName" -> verName = reader.nextString()
+                                        "suggestedVersionCode" -> {
+                                            verCode = try {
+                                                reader.nextLong()
+                                            } catch (e: Exception) {
+                                                reader.nextString().toLongOrNull() ?: 1L
+                                            }
+                                        }
+                                        "webSite" -> webSite = reader.nextString()
+                                        "sourceCode" -> sourceCode = reader.nextString()
+                                        "issueTracker" -> issueTracker = reader.nextString()
+                                        "license" -> license = reader.nextString()
+                                        else -> reader.skipValue()
+                                    }
+                                }
+                                reader.endObject()
+                                
+                                if (pkg.isNotEmpty()) {
+                                    val iconFullPath = if (iconFile.isNotEmpty()) {
+                                        "$cleanUrl/icons-640/$iconFile"
+                                    } else if (localizedIcon != null && localizedIconLoc != null) {
+                                        "$cleanUrl/$pkg/$localizedIconLoc/$localizedIcon"
+                                    } else if (fallbackIcon != null && fallbackIconLoc != null) {
+                                        "$cleanUrl/$pkg/$fallbackIconLoc/$fallbackIcon"
+                                    } else {
+                                        "$cleanUrl/icons-640/$pkg.png"
+                                    }
+                                    
+                                    val finalName = if (localizedName?.isNotEmpty() == true) {
+                                        localizedName
+                                    } else if (fallbackName?.isNotEmpty() == true) {
+                                        fallbackName
+                                    } else if (name.isNotEmpty()) {
+                                        name
+                                    } else {
+                                        pkg
+                                    }
+
+                                    val finalSummary = if (localizedSummary?.isNotEmpty() == true) {
+                                        localizedSummary
+                                    } else if (fallbackSummary?.isNotEmpty() == true) {
+                                        fallbackSummary
+                                    } else if (summary.isNotEmpty() && summary != "No summary.") {
+                                        summary
+                                    } else {
+                                        "No summary."
+                                    }
+
+                                    val finalDesc = if (localizedDesc?.isNotEmpty() == true) {
+                                        localizedDesc
+                                    } else if (fallbackDesc?.isNotEmpty() == true) {
+                                        fallbackDesc
+                                    } else if (descText.isNotEmpty() && descText != "No description.") {
+                                        descText
+                                    } else {
+                                        "No description."
+                                    }
+
+                                    parsedApps.add(
+                                        AppEntity(
+                                            packageName = pkg,
+                                            repoUrl = cleanUrl,
+                                            name = finalName,
+                                            summary = finalSummary,
+                                            description = finalDesc,
+                                            category = cat,
+                                            iconUrl = iconFullPath,
+                                            versionName = verName,
+                                            versionCode = verCode,
+                                            apkUrl = "$cleanUrl/${pkg}_$verCode.apk",
+                                            sizeBytes = 12 * 1024 * 1024,
+                                            website = webSite,
+                                            sourceCode = sourceCode,
+                                            issueTracker = issueTracker,
+                                            license = license,
+                                            isFavorite = false,
+                                            isInstalled = false
+                                        )
+                                    )
+                                    if (parsedApps.size % 15 == 0) {
+                                        onProgress("Streaming and parsing index JSON... Found ${parsedApps.size} apps so far")
+                                    }
+                                }
+                            }
+                            reader.endArray()
+                        } else {
+                            reader.skipValue()
                         }
                     }
-
+                    reader.endObject()
+                    reader.close()
+                    
+                    onProgress("Caching and updating database info...")
                     appDao.insertApps(parsedApps)
                     appDao.updateRepoSync(cleanUrl, System.currentTimeMillis(), parsedApps.size)
                     onProgress("Updated $repoName! Added ${parsedApps.size} apps.")
